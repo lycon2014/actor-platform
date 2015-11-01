@@ -1,7 +1,7 @@
 package im.actor.server.persist
 
 import im.actor.server.models.{ Dialog, PeerType }
-import slick.lifted.ColumnOrdered
+import slick.lifted.{ MappedProjection, ColumnOrdered }
 
 import scala.concurrent.ExecutionContext
 
@@ -13,7 +13,45 @@ import slick.profile.{ SqlAction, FixedSqlStreamingAction, FixedSqlAction }
 
 import im.actor.server.models
 
-final class DialogTable(tag: Tag) extends Table[models.Dialog](tag, "dialogs") {
+final case class DialogCommon(peer: models.Peer, lastMessageDate: DateTime, lastReceivedAt: DateTime, lastReadAt: DateTime)
+
+final class DialogCommonTable(tag: Tag) extends Table[DialogCommon](tag, "dialogs") {
+  def peerType = column[Int]("peer_type", O.PrimaryKey)
+
+  def peerId = column[Int]("peer_id", O.PrimaryKey)
+
+  def lastMessageDate = column[DateTime]("last_message_date")
+
+  def lastReceivedAt = column[DateTime]("last_received_at")
+
+  def lastReadAt = column[DateTime]("last_read_at")
+
+  def * = (peerType, peerId, lastMessageDate, lastReceivedAt, lastReadAt) <> (applyDialogCommon.tupled, unapplyDialogCommon)
+
+  def applyDialogCommon: (Int, Int, DateTime, DateTime, DateTime) ⇒ DialogCommon = {
+    case (peerType, peerId, lastMessageDate, lastReceivedAt, lastReadAt) ⇒
+      DialogCommon(models.Peer(models.PeerType.fromInt(peerType), peerId), lastMessageDate, lastReceivedAt, lastReadAt)
+  }
+
+  def unapplyDialogCommon: DialogCommon ⇒ Option[(Int, Int, DateTime, DateTime, DateTime)] = { common ⇒
+    DialogCommon.unapply(common) map {
+      case (peer, lastMessageDate, lastReceivedAt, lastReadAt) ⇒
+        (peer.typ.toInt, peer.id, lastMessageDate, lastReceivedAt, lastReadAt)
+    }
+  }
+}
+
+case class UserDialog(
+  userId:              Int,
+  peer:                models.Peer,
+  ownerLastReceivedAt: DateTime,
+  ownerLastReadAt:     DateTime,
+  isHidden:            Boolean,
+  isArchived:          Boolean,
+  createdAt:           DateTime
+)
+
+final class UserDialogTable(tag: Tag) extends Table[UserDialog](tag, "dialogs") {
 
   def userId = column[Int]("user_id", O.PrimaryKey)
 
@@ -41,9 +79,6 @@ final class DialogTable(tag: Tag) extends Table[models.Dialog](tag, "dialogs") {
     userId,
     peerType,
     peerId,
-    lastMessageDate,
-    lastReceivedAt,
-    lastReadAt,
     ownerLastReceivedAt,
     ownerLastReadAt,
     isHidden,
@@ -51,25 +86,19 @@ final class DialogTable(tag: Tag) extends Table[models.Dialog](tag, "dialogs") {
     createdAt
   ) <> (applyDialog.tupled, unapplyDialog)
 
-  def applyDialog: (Int, Int, Int, DateTime, DateTime, DateTime, DateTime, DateTime, Boolean, Boolean, DateTime) ⇒ models.Dialog = {
+  def applyDialog: (Int, Int, Int, DateTime, DateTime, Boolean, Boolean, DateTime) ⇒ UserDialog = {
     case (
       userId,
       peerType,
       peerId,
-      lastMessageDate,
-      lastReceivedAt,
-      lastReadAt,
       ownerLastReceivedAt,
       ownerLastReadAt,
       isHidden,
       isArchived,
       createdAt) ⇒
-      models.Dialog(
+      UserDialog(
         userId = userId,
         peer = models.Peer(models.PeerType.fromInt(peerType), peerId),
-        lastMessageDate = lastMessageDate,
-        lastReceivedAt = lastReceivedAt,
-        lastReadAt = lastReadAt,
         ownerLastReceivedAt = ownerLastReceivedAt,
         ownerLastReadAt = ownerLastReadAt,
         isHidden = isHidden,
@@ -78,16 +107,74 @@ final class DialogTable(tag: Tag) extends Table[models.Dialog](tag, "dialogs") {
       )
   }
 
-  def unapplyDialog: models.Dialog ⇒ Option[(Int, Int, Int, DateTime, DateTime, DateTime, DateTime, DateTime, Boolean, Boolean, DateTime)] = { dialog ⇒
-    models.Dialog.unapply(dialog).map {
-      case (userId, peer, lastMessageDate, lastReceivedAt, lastReadAt, ownerLastReceivedAt, ownerLastReadAt, isHidden, isArchived, createdAt) ⇒
-        (userId, peer.typ.toInt, peer.id, lastMessageDate, lastReceivedAt, lastReadAt, ownerLastReceivedAt, ownerLastReadAt, isHidden, isArchived, createdAt)
+  def unapplyDialog: UserDialog ⇒ Option[(Int, Int, Int, DateTime, DateTime, Boolean, Boolean, DateTime)] = { dialog ⇒
+    UserDialog.unapply(dialog).map {
+      case (userId, peer, ownerLastReceivedAt, ownerLastReadAt, isHidden, isArchived, createdAt) ⇒
+        (userId, peer.typ.toInt, peer.id, ownerLastReceivedAt, ownerLastReadAt, isHidden, isArchived, createdAt)
     }
   }
 }
 
 object DialogRepo {
-  val dialogs = TableQuery[DialogTable]
+  private def applyDialog: (UserDialog, DialogCommon) ⇒ models.Dialog = {
+    case (u, c) ⇒
+      models.Dialog(
+        userId = u.userId,
+        peer = u.peer,
+        lastMessageDate = c.lastMessageDate,
+        lastReceivedAt = c.lastReceivedAt,
+        lastReadAt = c.lastReadAt,
+        ownerLastReceivedAt = u.ownerLastReceivedAt,
+        ownerLastReadAt = u.ownerLastReadAt,
+        isHidden = u.isHidden,
+        isArchived = u.isArchived,
+        createdAt = u.createdAt
+      )
+  }
+
+  final case class LiftedD(
+    userId:              Rep[Int],
+    peerType:            Rep[Int],
+    peerId:              Rep[Int],
+    lastMessageDate:     Rep[DateTime],
+    lastReceivedAt:      Rep[DateTime],
+    lastReadAt:          Rep[DateTime],
+    ownerLastReceivedAt: Rep[DateTime],
+    ownerLastReadAt:     Rep[DateTime],
+    isHidden:            Rep[Boolean],
+    isArchived:          Rep[Boolean],
+    createdAt:           Rep[DateTime]
+  )
+
+  object LiftedD {
+    def build(tp: (UserDialogTable, DialogCommonTable)): LiftedD = {
+      val (user, common) = tp
+      LiftedD(
+        userId = user.userId,
+        peerType = user.peerType,
+        peerId = user.peerId,
+        lastMessageDate = common.lastMessageDate,
+        lastReceivedAt = common.lastReceivedAt,
+        lastReadAt = common.lastReadAt,
+        ownerLastReceivedAt = user.ownerLastReceivedAt,
+        ownerLastReadAt = user.ownerLastReadAt,
+        isHidden = user.isHidden,
+        isArchived = user.isArchived,
+        createdAt = user.createdAt
+      )
+    }
+  }
+
+  implicit object DShape extends CaseClassShape(LiftedD.build, applyDialog.tupled)
+
+  val userDialogs = TableQuery[UserDialogTable]
+  val dialogsCommon = TableQuery[DialogCommonTable]
+
+  val dialogs =
+    (userDialogs join dialogsCommon on ((d, c) ⇒ d.peerType === c.peerType && d.peerId === c.peerId)) map {
+      case (tp) ⇒ LiftedD.build(tp)
+    }
+
   val dialogsC = Compiled(dialogs)
 
   def byPeerSimple(peerType: Rep[Int], peerId: Rep[Int]) =
@@ -156,7 +243,7 @@ object DialogRepo {
   def findNotArchived(userId: Int, dateOpt: Option[DateTime], limit: Int, fetchHidden: Boolean = false)(implicit ec: ExecutionContext): DBIO[Seq[models.Dialog]] =
     findNotArchived(userId, dateOpt: Option[DateTime], limit, _.lastMessageDate.desc, fetchHidden)
 
-  def findNotArchived[A](userId: Int, dateOpt: Option[DateTime], limit: Int, sortBy: DialogTable ⇒ ColumnOrdered[A], fetchHidden: Boolean)(implicit ec: ExecutionContext): DBIO[Seq[models.Dialog]] = {
+  def findNotArchived[A](userId: Int, dateOpt: Option[DateTime], limit: Int, sortBy: LiftedD ⇒ ColumnOrdered[A], fetchHidden: Boolean)(implicit ec: ExecutionContext): DBIO[Seq[models.Dialog]] = {
     val baseQuery = (if (fetchHidden) notArchived else notHiddenNotArchived)
       .filter(d ⇒ d.userId === userId)
       .sortBy(sortBy)
@@ -233,5 +320,7 @@ object DialogRepo {
     byPKC.applied((userId, peer.typ.toInt, peer.id)).map(_.isArchived).update(true)
 
   def delete(userId: Int, peer: models.Peer): FixedSqlAction[Int, NoStream, Write] =
-    byPKC.applied((userId, peer.typ.toInt, peer.id)).delete
+    userDialogs
+      .filter(d ⇒ d.userId === userId && d.peerType === peer.typ.toInt && d.peerId === peer.id)
+      .delete
 }

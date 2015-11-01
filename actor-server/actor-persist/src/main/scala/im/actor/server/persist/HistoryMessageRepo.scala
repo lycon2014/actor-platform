@@ -9,7 +9,7 @@ import slick.profile.{ SqlAction, FixedSqlStreamingAction, FixedSqlAction }
 
 import im.actor.server.models
 
-class HistoryMessageTable(tag: Tag) extends Table[models.HistoryMessage](tag, "history_messages") {
+private[persist] final class HistoryMessageTable(tag: Tag) extends Table[models.HistoryMessage](tag, "history_messages") {
   def userId = column[Int]("user_id", O.PrimaryKey)
 
   def peerType = column[Int]("peer_type", O.PrimaryKey)
@@ -53,7 +53,7 @@ class HistoryMessageTable(tag: Tag) extends Table[models.HistoryMessage](tag, "h
   }
 }
 
-object HistoryMessage {
+object HistoryMessageRepo {
   val messages = TableQuery[HistoryMessageTable]
   val messagesC = Compiled(messages)
 

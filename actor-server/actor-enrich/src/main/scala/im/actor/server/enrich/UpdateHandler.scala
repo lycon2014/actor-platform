@@ -41,7 +41,7 @@ class PrivateHandler(fromPeer: Peer, toPeer: Peer, randomId: Long)(implicit syst
       )
     } yield Seq(fromUpdate, toUpdate).flatten)
 
-  def handleDbUpdate(message: ApiMessage): DBIO[Int] = persist.HistoryMessage.updateContentAll(
+  def handleDbUpdate(message: ApiMessage): DBIO[Int] = persist.HistoryMessageRepo.updateContentAll(
     userIds = Set(fromPeer.id, toPeer.id),
     randomId = randomId,
     peerType = PeerType.Private,
@@ -67,7 +67,7 @@ class GroupHandler(groupPeer: Peer, randomId: Long)(implicit system: ActorSystem
   def handleDbUpdate(message: ApiMessage): DBIO[Int] =
     for {
       usersIds ← persist.GroupUserRepo.findUserIds(groupPeer.id)
-      result ← persist.HistoryMessage.updateContentAll(
+      result ← persist.HistoryMessageRepo.updateContentAll(
         userIds = usersIds.toSet,
         randomId = randomId,
         peerType = PeerType.Group,

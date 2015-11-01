@@ -16,7 +16,7 @@ import im.actor.server.dialog.group.GroupDialogRegion
 import im.actor.server.dialog.privat.PrivateDialogRegion
 import im.actor.server.group.{ GroupExtension, GroupUtils }
 import im.actor.server.models.{ Peer, PeerType, Dialog }
-import im.actor.server.persist.{ HistoryMessage, DialogRepo }
+import im.actor.server.persist.{ HistoryMessageRepo, DialogRepo }
 import im.actor.server.sequence.SeqStateDate
 import org.joda.time.DateTime
 import slick.dbio.DBIO
@@ -120,10 +120,10 @@ final class DialogExtensionImpl(system: ActorSystem) extends DialogExtension {
     if (isSharedUser(historyOwner)) {
       for {
         isMember ← DBIO.from(groupExt.getMemberIds(peer.id) map { case (memberIds, _, _) ⇒ memberIds contains clientUserId })
-        result ← if (isMember) HistoryMessage.getUnreadCount(historyOwner, peer, ownerLastReadAt) else DBIO.successful(0)
+        result ← if (isMember) HistoryMessageRepo.getUnreadCount(historyOwner, peer, ownerLastReadAt) else DBIO.successful(0)
       } yield result
     } else {
-      HistoryMessage.getUnreadCount(historyOwner, peer, ownerLastReadAt)
+      HistoryMessageRepo.getUnreadCount(historyOwner, peer, ownerLastReadAt)
     }
   }
 
@@ -152,7 +152,7 @@ final class DialogExtensionImpl(system: ActorSystem) extends DialogExtension {
   private def getDialogShort(dialogModel: Dialog)(implicit ec: ExecutionContext): DBIO[ApiDialogShort] = {
     HistoryUtils.withHistoryOwner(dialogModel.peer, dialogModel.userId) { historyOwner ⇒
       for {
-        messageOpt ← HistoryMessage.findNewest(historyOwner, dialogModel.peer) map (_.map(_.ofUser(dialogModel.userId)))
+        messageOpt ← HistoryMessageRepo.findNewest(historyOwner, dialogModel.peer) map (_.map(_.ofUser(dialogModel.userId)))
         unreadCount ← getUnreadCount(dialogModel.userId, historyOwner, dialogModel.peer, dialogModel.ownerLastReadAt)
       } yield ApiDialogShort(
         peer = ApiPeer(ApiPeerType(dialogModel.peer.typ.toInt), dialogModel.peer.id),

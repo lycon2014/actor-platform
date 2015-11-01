@@ -53,7 +53,7 @@ object HistoryUtils {
         }
 
       for {
-        _ ← persist.HistoryMessage.create(messages)
+        _ ← persist.HistoryMessageRepo.create(messages)
         _ ← persist.DialogRepo.updateLastMessageDate(fromPeer.id, toPeer, date)
         res ← persist.DialogRepo.updateLastMessageDate(toPeer.id, fromPeer, date)
       } yield ()
@@ -65,7 +65,7 @@ object HistoryUtils {
 
             for {
               _ ← persist.DialogRepo.updateLastMessageDates(groupUserIds.toSet, toPeer, date)
-              _ ← persist.HistoryMessage.create(historyMessage)
+              _ ← persist.HistoryMessageRepo.create(historyMessage)
             } yield ()
           } else {
             val historyMessages = groupUserIds.map { groupUserId ⇒
@@ -73,7 +73,7 @@ object HistoryUtils {
             }
             val dialogAction = persist.DialogRepo.updateLastMessageDates(groupUserIds.toSet, toPeer, date)
 
-            DBIO.sequence(Seq(dialogAction, persist.HistoryMessage.create(historyMessages) map (_.getOrElse(0)))) map (_ ⇒ ())
+            DBIO.sequence(Seq(dialogAction, persist.HistoryMessageRepo.create(historyMessages) map (_.getOrElse(0)))) map (_ ⇒ ())
           }
         }
       }
