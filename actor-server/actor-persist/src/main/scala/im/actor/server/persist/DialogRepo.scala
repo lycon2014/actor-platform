@@ -116,21 +116,6 @@ final class UserDialogTable(tag: Tag) extends Table[UserDialog](tag, "dialogs") 
 }
 
 object DialogRepo {
-  private def applyDialog: (UserDialog, DialogCommon) ⇒ models.Dialog = {
-    case (u, c) ⇒
-      models.Dialog(
-        userId = u.userId,
-        peer = u.peer,
-        lastMessageDate = c.lastMessageDate,
-        lastReceivedAt = c.lastReceivedAt,
-        lastReadAt = c.lastReadAt,
-        ownerLastReceivedAt = u.ownerLastReceivedAt,
-        ownerLastReadAt = u.ownerLastReadAt,
-        isHidden = u.isHidden,
-        isArchived = u.isArchived,
-        createdAt = u.createdAt
-      )
-  }
 
   final case class LiftedD(
     userId:              Rep[Int],
@@ -170,10 +155,24 @@ object DialogRepo {
   val userDialogs = TableQuery[UserDialogTable]
   val dialogsCommon = TableQuery[DialogCommonTable]
 
+  private def applyDialog: (UserDialog, DialogCommon) ⇒ models.Dialog = {
+    case (u, c) ⇒
+      models.Dialog(
+        userId = u.userId,
+        peer = u.peer,
+        lastMessageDate = c.lastMessageDate,
+        lastReceivedAt = c.lastReceivedAt,
+        lastReadAt = c.lastReadAt,
+        ownerLastReceivedAt = u.ownerLastReceivedAt,
+        ownerLastReadAt = u.ownerLastReadAt,
+        isHidden = u.isHidden,
+        isArchived = u.isArchived,
+        createdAt = u.createdAt
+      )
+  }
+
   val dialogs =
-    (userDialogs join dialogsCommon on ((d, c) ⇒ d.peerType === c.peerType && d.peerId === c.peerId)) map {
-      case (tp) ⇒ LiftedD.build(tp)
-    }
+    (userDialogs join dialogsCommon on ((d, c) ⇒ d.peerType === c.peerType && d.peerId === c.peerId)) map (applyDialog.tupled)
 
   val dialogsC = Compiled(dialogs)
 
