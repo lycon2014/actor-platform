@@ -30,7 +30,7 @@ import im.actor.server.api.rpc.service.webhooks.IntegrationsServiceImpl
 import im.actor.server.bot.ActorBot
 import im.actor.server.cli.ActorCliService
 import im.actor.server.db.DbExtension
-import im.actor.server.dialog.{ DialogExtension, DialogProcessor }
+import im.actor.server.dialog.{ DialogExtension, Dialog }
 import im.actor.server.email.{ EmailConfig, SmtpEmailSender }
 import im.actor.server.enrich.{ RichMessageConfig, RichMessageWorker }
 import im.actor.server.frontend.Frontend
@@ -54,7 +54,7 @@ object ActorServer {
     CommonSerialization.register()
     UserProcessor.register()
     GroupProcessor.register()
-    DialogProcessor.register()
+    Dialog.register()
 
     val serverConfig = ActorConfig.load()
 
@@ -100,13 +100,12 @@ object ActorServer {
       val weakUpdatesExt = WeakUpdatesExtension(system)
       val presenceExt = PresenceExtension(system)
       val groupPresenceExt = GroupPresenceExtension(system)
+      val dialogExt = DialogExtension(system)
       implicit val socialManagerRegion = SocialExtension(system).region
       implicit val userProcessorRegion = UserExtension(system).processorRegion
       implicit val userViewRegion = UserExtension(system).viewRegion
       implicit val groupProcessorRegion = GroupExtension(system).processorRegion
       implicit val groupViewRegion = GroupExtension(system).viewRegion
-      val groupDialogRegion = DialogExtension(system).groupRegion
-      val privateDialogRegion = DialogExtension(system).privateRegion
 
       IntegrationTokenMigrator.migrate()
 
